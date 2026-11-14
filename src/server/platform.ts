@@ -35,15 +35,16 @@ import { PeopleService } from "../modules/people/index.js";
 import { ConversationService } from "../modules/conversations/index.js";
 import { NotificationService } from "../modules/notifications/index.js";
 
-import { ConsoleEmailSender, type EmailSender } from "./email.js";
+import { ConsoleEmailSender, QueuedEmailSender, ResendEmailSender, type EmailSender } from "./email.js";
 import { brandFrom, decisionsWaitingEmail, ownerAlertEmail } from "./email-templates.js";
 import { userIdFor } from "./identity.js";
 import { ExpiringSet, SendLog } from "./expiring.js";
 import { AffiliateService, CouponService } from "../modules/promotions/index.js";
 import { PromoterService } from "../modules/promoter/index.js";
 import { GrowthService } from "../modules/growth/index.js";
-import { MetaGraph, type MetaConfig } from "../modules/meta/index.js";
+import { MetaGraph, MetaRejected, type MetaConfig } from "../modules/meta/index.js";
 import { OwnerWhatsApp, WhatsAppCloud, type WhatsAppConfig } from "../modules/whatsapp/index.js";
+import { ConnectionsService } from "../modules/connections/index.js";
 import { COMPANY } from "../company.js";
 import { CredentialStore } from "../modules/credentials/index.js";
 
@@ -80,6 +81,11 @@ export interface PlatformConfig {
   meta?: MetaConfig;
   /** The owner's WhatsApp line to the promotion agent. From environment variables. */
   whatsapp?: WhatsAppConfig;
+  /**
+   * The server-set services' variables (Resend, Stripe, RunPod, Anthropic, Slack, META_GRAPH_VERSION), only so the
+   * owner's Connections page can say whether each is set and test it. Never sent to the browser.
+   */
+  connectionEnv?: Record<string, string | undefined>;
   now?: () => Date;
   http?: typeof fetch;
 }
@@ -127,7 +133,12 @@ export function createPlatform(cfg: PlatformConfig) {
   });
   const router = new ChannelRouter(identity, workforce, audit);
   /** Business apps (tills, payroll). Employees get only the app data the owner granted them. */
-  const integrations = new IntegrationService(identity, audit, ledger, defaultRegistry(), { http: cfg.http, now, oauthApps: cfg.integrationApps });
+  // Our Xero/Square apps: the server's when set there, otherwise what the owner typed on the Connections page
+  // (looked up on each use, so a saved app works at once).
+  const oauthApps = new Proxy({} as Record<string, OAuthApp>, {
+    get: (_t, k) => (typeof k === "string" ? cfg.integrationApps?.[k] ?? connections.integrationApps()[k] : undefined),
+  });
+  const integrations = new IntegrationService(identity, audit, ledger, defaultRegistry(), { http: cfg.http, now, oauthApps });
   workforce.addContext((ws, templateKey) => integrations.contextFor(ws, templateKey));
   /** Welcomes new owners and runs setup. Storage and models are stand-ins until real RunPod/bucket provisioning is wired in. */
   const admin = new AdminManager(identity, workforce, audit, bus, new InMemoryStorageProvisioner(), new InMemoryModelProvisioner(), router, { now });
@@ -153,7 +164,18 @@ export function createPlatform(cfg: PlatformConfig) {
   energy.setZoneResolver((ws) => batch.scheduleOf(ws).timezone);
   workforce.setIntake(batch);
   workforce.addContext((ws, templateKey, taskType) => batch.contextFor(ws, templateKey, taskType));
-  const email = cfg.email ?? new ConsoleEmailSender();
+  // Email goes through the server's Resend settings when set there, otherwise the ones typed on the Connections
+  // page (a new sender as soon as they change), otherwise the log.
+  const consoleEmail = new ConsoleEmailSender();
+  let typedMail: { apiKey: string; from: string; sender: QueuedEmailSender } | undefined;
+  const currentEmail = (): EmailSender => {
+    if (cfg.email) return cfg.email;
+    const s = connections.emailSettings();
+    if (!s) return consoleEmail;
+    if (typedMail?.apiKey !== s.apiKey || typedMail.from !== s.from) typedMail = { ...s, sender: new QueuedEmailSender(new ResendEmailSender(s.apiKey, s.from, cfg.http)) };
+    return typedMail.sender;
+  };
+  const email: EmailSender & { idle(): Promise<void> } = { send: (m) => currentEmail().send(m), idle: async () => { await typedMail?.sender.idle(); } };
   const base = (cfg.appUrl ?? "").replace(/\/$/, "");
   /** Signed-in user ids of the platform owners (the same id the session carries). */
   const ownerEmails = ownerEmailsEarly;
@@ -178,17 +200,38 @@ export function createPlatform(cfg: PlatformConfig) {
    * The promotion agent for the owner's three websites. Everything it drafts waits for the owner (the same decisions
    * page and email digest as quality review); it sends email only one person at a time and only after approval.
    */
-  const metaGraph = cfg.meta ? new MetaGraph(cfg.meta, cfg.http) : undefined;
-  let ownerWhatsApp: OwnerWhatsApp | undefined;
+  /**
+   * Facebook, Instagram and WhatsApp come from the owner's Connections page (stored encrypted) or, when set, the
+   * server's environment variables. They are rebuilt whenever the owner saves, so no restart or server login is needed.
+   */
+  const live: { graph?: MetaGraph; wa?: OwnerWhatsApp; waState?: unknown; sink?: Sink } = {};
+  const connections = new ConnectionsService((userId) => ownerIdSet.has(userId), {
+    now, http: cfg.http, appUrl: base, envMeta: cfg.meta, envWhatsApp: cfg.whatsapp, env: cfg.connectionEnv,
+    onChange: () => rebuildChannels(),
+    whatsapp: () => live.wa,
+  });
+  const graphNow = (): MetaGraph => {
+    if (!live.graph) throw new MetaRejected("Facebook and Instagram are not connected yet: connect them on the Connections page");
+    return live.graph;
+  };
   const promoter = new PromoterService((userId) => ownerIdSet.has(userId), {
     now, completer: gateway, send: (mail) => email.send(mail),
-    meta: metaGraph ? { status: () => metaGraph.status(), publish: (i) => metaGraph.publish(i), stats: (t, id, at) => metaGraph.stats(t, id, at) } : undefined,
+    meta: { status: () => live.graph?.status() ?? { facebook: false, instagram: false }, publish: (i) => graphNow().publish(i), stats: (t, id, at) => graphNow().stats(t, id, at) },
     unsubscribeUrl: (token) => `${base}/unsubscribe.html#t=${encodeURIComponent(token)}`,
     sender: { name: COMPANY.name, address: COMPANY.registeredOffice },
-    notifyOwner: () => { decisionDigest.poke(); void ownerWhatsApp?.notifyWaiting(); },
+    notifyOwner: () => { decisionDigest.poke(); void live.wa?.notifyWaiting(); },
   });
   const firstOwner = [...ownerIdSet][0];
-  if (cfg.whatsapp && firstOwner) ownerWhatsApp = new OwnerWhatsApp(new WhatsAppCloud(cfg.whatsapp, cfg.http), promoter, { ownerUserId: firstOwner, now });
+  function rebuildChannels(): void {
+    const m = connections.metaConfig();
+    live.graph = m ? new MetaGraph(m, cfg.http) : undefined;
+    const w = connections.whatsappConfig();
+    if (live.wa) live.waState = live.wa.exportState();
+    live.wa = w && firstOwner ? new OwnerWhatsApp(new WhatsAppCloud(w, cfg.http), promoter, { ownerUserId: firstOwner, now }) : undefined;
+    if (live.wa && live.waState) live.wa.restore(live.waState);
+    if (live.wa && live.sink) live.wa.useSink(live.sink);
+  }
+  rebuildChannels();
   /**
    * The Content Distribution and Community Growth Manager: researches places to publish, drafts for each one, and records
    * what went out and what it earned. Owner only. It never posts, creates accounts or sends pitches itself.
@@ -474,19 +517,24 @@ export function createPlatform(cfg: PlatformConfig) {
     for (const x of s.peopleSettings ?? []) people.restoreSettings(x.workspaceId, x.settings);
     for (const r of s.batchRuns ?? []) batch.restoreRun(r);
     for (const c of s.credentials ?? []) credentials.restore(c.userId, c);
+    for (const c of s.connectionSecrets ?? []) connections.restore(c.key, c.secret);
+    rebuildChannels();
     for (const x of s.promoRecords ?? []) {
       if (x.kind === "coupon") coupons.restoreCoupon(x.data);
       else if (x.kind === "redemption") coupons.restoreRedemption(x.data);
-      else if (x.kind === "channel") ownerWhatsApp?.restore(x.data);
+      else if (x.kind === "channel") { live.waState = x.data; live.wa?.restore(x.data); }
       else if (["campaign", "draft", "lead", "optout", "fact"].includes(x.kind)) promoter.restore(x.kind, x.data);
       else if (["opportunity", "post", "publication", "account", "approval"].includes(x.kind)) growth.restore(x.kind, x.data);
       else affiliates.restore(x.kind, x.data);
     }
     sink = store;
-    for (const part of [audit, identity, energy, workforce, ledger, router, admin, integrations, reviews, prices, specialists, aiSettings, spend, batch, payments, rota, reconciliation, people, conversations, notices, credentials, coupons, affiliates, promoter, growth]) part.useSink(store);
-    ownerWhatsApp?.useSink(store);
+    for (const part of [audit, identity, energy, workforce, ledger, router, admin, integrations, reviews, prices, specialists, aiSettings, spend, batch, payments, rota, reconciliation, people, conversations, notices, credentials, coupons, affiliates, promoter, growth, connections]) part.useSink(store);
+    live.sink = store;
+    live.wa?.useSink(store);
   }
 
+  /** True when changes are written to the database (false: memory only, lost on restart). */
+  const hasStore = () => !!live.sink;
   const healthy = () => (sink as { healthy?: boolean } | undefined)?.healthy !== false;
 
   /**
@@ -506,6 +554,14 @@ export function createPlatform(cfg: PlatformConfig) {
   const codeFails = new SendLog(15 * 60_000);
   /** Starts a sleeping RunPod worker for a client who just opened the app or started typing. */
   const warm = () => routing?.warm() ?? "skipped";
-  return { conversations, notices, warm, ownerDecisions, decisionDigest, dashboard, reconciliation, rota, people, payments, batch, email, usedLinks, sends, loginFails, resets, credentials, formHits, codeFails, coupons, affiliates, promoter, growth, ownerWhatsApp, admin, reviews, prices, specialists, ai, clients, isPlatformOwner, healthy, cfg, now, audit, bus, identity, energy, workforce, ledger, onboarding, router, integrations, slackTokens, saveSlackToken, attachStore };
+  /**
+   * The config as the routes read it: Slack and the Google/Microsoft sign-in apps include what the owner typed on
+   * the Connections page, looked up on each request. Server settings win.
+   */
+  const liveCfg: PlatformConfig = Object.defineProperties({ ...cfg }, {
+    slack: { enumerable: true, get: () => cfg.slack ?? connections.slackApp() },
+    loginApps: { enumerable: true, get: (): LoginApps => ({ ...connections.loginApps(), ...cfg.loginApps }) },
+  });
+  return { conversations, notices, warm, ownerDecisions, decisionDigest, dashboard, reconciliation, rota, people, payments, batch, email, usedLinks, sends, loginFails, resets, credentials, formHits, codeFails, coupons, affiliates, promoter, growth, connections, get ownerWhatsApp() { return live.wa; }, admin, reviews, prices, specialists, ai, clients, isPlatformOwner, healthy, hasStore, cfg: liveCfg, now, audit, bus, identity, energy, workforce, ledger, onboarding, router, integrations, slackTokens, saveSlackToken, attachStore };
 }
 export type Platform = ReturnType<typeof createPlatform>;

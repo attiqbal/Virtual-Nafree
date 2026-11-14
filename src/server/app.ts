@@ -27,6 +27,7 @@ import { RotaError } from "../modules/rota/index.js";
 import { PeopleError } from "../modules/people/index.js";
 import { PaymentError, WebhookSignatureError, type Order } from "../modules/payments/index.js";
 import type { Platform } from "./platform.js";
+import { ConnectionsError } from "../modules/connections/index.js";
 import { suggestionsFor } from "./suggestions.js";
 import type { Reply } from "../modules/conversations/index.js";
 import type { TaskResult } from "../modules/workforce/index.js";
@@ -360,10 +361,12 @@ export function createApp(p: Platform) {
       if (!wa) return json(503, { error: "whatsapp is not configured" });
       if (method === "GET") {
         const challenge = wa.handshake(req.query);
+        if (challenge) p.connections.noteWebhook();
         return challenge ? { status: 200, text: challenge, headers: { "content-type": "text/plain; charset=utf-8" } } : json(403, { error: "bad verify token" });
       }
       if (method === "POST") {
         if (!wa.verifySignature(req.rawBody, req.headers["x-hub-signature-256"])) return json(401, { error: "bad signature" });
+        p.connections.noteWebhook();
         let payload: unknown;
         try { payload = JSON.parse(req.rawBody || "{}"); } catch { return json(400, { error: "invalid JSON" }); }
         // Answer Meta at once (it retries slow replies); the work runs after the response is sent.
@@ -454,6 +457,7 @@ export function createApp(p: Platform) {
       } as const;
       return json(200, { specialists: OWNER_SPECIALISTS.map((s) => ({ ...s, status: live[s.key] })) });
     }
+    if (path === "/api/owner/connections" || path.startsWith("/api/owner/connections/")) return ownerConnectionRoutes(req, userId, body);
     if (path.startsWith("/api/owner/growth")) return ownerGrowthRoutes(req, userId, body);
     if (path.startsWith("/api/owner/promoter")) return ownerPromoterRoutes(req, userId, body);
     if (path.startsWith("/api/owner/coupons") || path.startsWith("/api/owner/affiliates") || path === "/api/owner/promotions") return ownerPromoRoutes(req, userId, body);
@@ -836,6 +840,29 @@ export function createApp(p: Platform) {
       else if (kind === "publications" && action === "follow-up") g.setFollowUp(userId, id, b);
       else return json(404, { error: "not found" });
       return json(200, overview());
+    }
+    return json(404, { error: "not found" });
+  }
+
+  /**
+   * The owner's Connections page: Facebook, Instagram and WhatsApp details typed in the browser (stored encrypted,
+   * secrets never sent back), plus the status and a harmless real test of every server-set service.
+   */
+  async function ownerConnectionRoutes(req: Req, userId: string, body: () => any): Promise<Res> {
+    if (!p.isPlatformOwner(userId)) return json(403, { error: "only the MAIZ platform owner can manage connections" });
+    const { method, path } = req;
+    const c = p.connections;
+    const all = () => ({ connections: c.list(userId), persistent: p.hasStore() && p.healthy() });
+    try {
+      if (method === "GET" && path === "/api/owner/connections") return json(200, all());
+      if (method === "POST" && path === "/api/owner/connections/whatsapp/send-test") { const r = await c.sendWhatsAppTest(userId); return json(200, { ...r, ...all() }); }
+      const m = /^\/api\/owner\/connections\/([a-z]{2,20})(?:\/(test|disconnect))?$/.exec(path);
+      if (m && method === "PUT" && !m[2]) { c.save(userId, m[1]!, body()); return json(200, all()); }
+      if (m && method === "POST" && m[2] === "test") { await c.test(userId, m[1]!); return json(200, all()); }
+      if (m && method === "POST" && m[2] === "disconnect") { c.disconnect(userId, m[1]!); return json(200, all()); }
+    } catch (e) {
+      if (e instanceof ConnectionsError) return json(400, { error: e.message });
+      throw e;
     }
     return json(404, { error: "not found" });
   }

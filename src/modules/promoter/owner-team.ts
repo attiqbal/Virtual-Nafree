@@ -12,6 +12,12 @@ export interface OwnerSpecialist {
   summary: string;
   /** The workbench page for this specialist. */
   page: string;
+  /** The character used as this specialist's avatar on the owner's pages (a class in styles.css). */
+  avatar: string;
+  /** How the specialist introduces itself to the owner, in its own words. */
+  intro: string;
+  /** What it needs from the owner before it can do all of its job, in its own words. */
+  asks: string;
   jobDescription: JobDescription;
 }
 
@@ -40,7 +46,7 @@ export const PROMOTION_AGENT_JD: JobDescription = {
   legal: ["UK PECR: consent or the business-contact rules for email, sender identity, a working unsubscribe", "UK GDPR: a lawful basis and a source for every person on the list, and honouring opt-outs everywhere", "Advertising standards: claims must be true and provable", "Trademark rules for IELTS, PTE, TOEFL and SAT: no suggestion of endorsement"],
   records: ["Site knowledge base with the status of each fact", "Campaign plans, approvals and spend", "Lead list with source and lawful basis, and the opt-out list", "Every draft with who approved it and when"],
   knowledge: ["Marketing funnel and attribution with UTM tags", "PECR soft opt-in and corporate-subscriber rules at a practical level", "Platform advertising policies at a practical level"],
-  tools: [{ name: "Model gateway (RunPod first, Claude checking)", status: "available" }, { name: "One-to-one email through the platform sender", status: "available" }, { name: "Tracked links (UTM)", status: "available" }, { name: "Search Console and analytics import", status: "planned" }, { name: "Direct posting to social platforms", status: "planned" }],
+  tools: [{ name: "Model gateway (RunPod first, Claude checking)", status: "available" }, { name: "One-to-one email through the platform sender", status: "available" }, { name: "Tracked links (UTM)", status: "available" }, { name: "Search Console and analytics import", status: "planned" }, { name: "Facebook Page and Instagram publishing, after your approval (connect them on the Connections page)", status: "available" }, { name: "WhatsApp line to the owner for approvals (connect it on the Connections page)", status: "available" }, { name: "Other social platforms (LinkedIn, X, TikTok)", status: "planned" }],
   deliverables: [{ name: "Campaign plan", cadence: "Per campaign", energy: [0, 0] }, { name: "Outreach drafts", cadence: "Weekly", energy: [5, 20] }, { name: "Campaign report", cadence: "Weekly", energy: [0, 0] }],
   kpis: ["Visits and sign-ups from tracked links", "Cost per result inside the approved budget", "Opt-outs under 1 in 100 emails and no complaints", "Every draft approved or rejected within a day"],
   authority: {
@@ -89,6 +95,12 @@ export const GROWTH_MANAGER_JD: JobDescription = {
 };
 
 export const OWNER_SPECIALISTS: readonly OwnerSpecialist[] = [
-  { key: "promotion-agent", title: "Promotion agent", summary: "Plans campaigns and runs lawful outreach for Mock Test Room, Examutor and MAIZ Agents.", page: "/owner-promoter.html", jobDescription: PROMOTION_AGENT_JD },
-  { key: "community-growth-manager", title: "Content Distribution & Community Growth Manager", summary: "Finds places to publish, writes for each, and records what went out and what it earned.", page: "/owner-growth.html", jobDescription: GROWTH_MANAGER_JD },
+  { key: "promotion-agent", title: "Promotion agent", summary: "Plans campaigns and runs lawful outreach for Mock Test Room, Examutor and MAIZ Agents.", page: "/owner-promoter.html", avatar: "av-mm",
+    intro: "I promote Mock Test Room, Examutor and MAIZ Agents. I plan campaigns, write posts and emails in each site's voice, and keep the list of people we may contact. You approve every word before it goes anywhere.",
+    asks: "I can already write for you. To publish your approved posts myself I need your Facebook Page and Instagram, and WhatsApp so I can ask for your yes while you are out.",
+    jobDescription: PROMOTION_AGENT_JD },
+  { key: "community-growth-manager", title: "Content Distribution & Community Growth Manager", summary: "Finds places to publish, writes for each, and records what went out and what it earned.", page: "/owner-growth.html", avatar: "av-bc",
+    intro: "I find the forums, groups, newsletters and directories where your future users already talk, score each one, and write something useful for each. I never post, sign up or pitch without your approval.",
+    asks: "I need nothing connected to start: I prepare everything and you publish. My drafts use the AI engine and Claude, so those must be working.",
+    jobDescription: GROWTH_MANAGER_JD },
 ];

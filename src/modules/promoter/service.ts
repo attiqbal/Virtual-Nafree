@@ -401,11 +401,11 @@ export class PromoterService {
     if (i.status !== "approved") throw new PromoterError("only drafts you approved can be published");
     if (i.channel !== "social" && i.channel !== "community") throw new PromoterError("only social posts are published to Facebook or Instagram");
     const meta = this.opts.meta;
-    if (!meta) throw new PromoterError("Facebook and Instagram are not connected yet. See docs/META-WHATSAPP.md");
+    if (!meta) throw new PromoterError("Facebook and Instagram are not connected yet. Connect them on the Connections page");
     const r = (raw ?? {}) as Record<string, unknown>;
     if (r.target !== "facebook" && r.target !== "instagram") throw new PromoterError("choose Facebook or Instagram");
     const target = r.target;
-    if (!meta.status()[target]) throw new PromoterError(`${target === "facebook" ? "Facebook" : "Instagram"} is not connected yet`);
+    if (!meta.status()[target]) throw new PromoterError(`${target === "facebook" ? "Facebook" : "Instagram"} is not connected yet. Connect it on the Connections page`);
     const optional = (v: unknown): string | undefined => (v === undefined || v === null || v === "" ? undefined : String(v).trim());
     const when = optional(r.scheduleAt);
     const now = this.now();

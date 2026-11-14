@@ -37,6 +37,19 @@ export class OwnerWhatsApp {
   restore(data: any): void {
     this.state = { lastOwnerMessageAt: typeof data?.lastOwnerMessageAt === "string" ? data.lastOwnerMessageAt : undefined, notified: Array.isArray(data?.notified) ? data.notified.map(String) : [], seen: Array.isArray(data?.seen) ? data.seen.map(String) : [] };
   }
+  /** The line's memory (24-hour window, what was announced), so a rebuilt line after new settings carries on. */
+  exportState(): unknown { return { ...this.state }; }
+  /** The Connections page's test: free text inside the 24-hour window, otherwise the approved template. */
+  async sendTest(): Promise<"text" | "template"> {
+    if (this.windowOpen()) {
+      await this.wa.sendText("MAIZ Agents: this is a test from your Connections page. Your WhatsApp line to the promotion agent works. Send HELP to see what I understand.");
+      return "text";
+    }
+    await this.wa.sendAlert("test from your Connections page. Your WhatsApp line works. Reply HELLO to see what is waiting.");
+    return "template";
+  }
+  /** A harmless read of the business number, for the test button. */
+  phoneInfo() { return this.wa.phoneInfo(); }
   private now(): Date { return this.opts.now?.() ?? new Date(); }
   private save(next: State): void {
     this.state = { ...next, notified: next.notified.slice(-MAX_REMEMBERED), seen: next.seen.slice(-MAX_REMEMBERED) };

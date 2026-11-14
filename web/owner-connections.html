@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<!--@include head title="Connections · MAIZ Agents" description="Connect Facebook, Instagram, WhatsApp and the platform services your AI team needs."-->
+<meta name="robots" content="noindex">
+</head>
+<body>
+<div class="page-top">
+  <!--@include owner-header-->
+  <main id="main">
+    <section class="section">
+      <div class="container" style="max-width:1180px">
+        <!--@include owner-nav-->
+        <div class="rv-head">
+          <div><h1>Connections</h1>
+            <p class="sub">What your AI team needs from you to do the whole job. Each card is asked for by the team member who needs it. Follow the steps, paste what it asks for, press Test, and you will know straight away whether it works. No server login needed.</p></div>
+          <span class="badge badge-dark" id="ow-eg" hidden>Example data</span>
+        </div>
+        <div class="ob-panel" id="ow-gate" hidden aria-live="polite"><h2 id="ow-gate-h" style="font-size:1.25rem;margin:0 0 6px"></h2><p id="ow-gate-p" class="sub" style="margin:0 0 14px"></p><a class="btn btn-primary" id="ow-gate-a" href="/signin.html">Log in</a></div>
+        <div id="ow-body">
+          <div class="ow-stack">
+            <section class="panel cx-sum" aria-labelledby="cx-sum-h"><h2 id="cx-sum-h" class="sr-only">Progress</h2><div id="cx-progress"></div></section>
+            <div class="learn" id="cx-temp" hidden><b>Saved until restart only.</b>This server has no database switched on, so what you save here is lost when it restarts. On maizagents.com it is kept in the database.</div>
+            <div class="learn"><b>How your details are kept.</b>Tokens and secrets are encrypted before they are stored, and are never shown again after you save them: a saved one just says "Saved". To change one, paste the new value. Tests only read (a Page's name, a number's details); they never post, send or charge anything. The only exception is the WhatsApp test message, which you send on purpose.</div>
+            <h2 class="cx-group-h">Asked for by your team</h2>
+            <div class="ow-stack" id="cx-team"></div>
+            <h2 class="cx-group-h">For your clients</h2>
+            <p class="muted small cx-group-p">Set each one up once, and every client gets it: one-click sign-in, their AI team in Slack, and their books and tills connected without uploading files. Each card has the addresses to paste into the provider's own screens.</p>
+            <div class="ow-stack" id="cx-clients"></div>
+            <h2 class="cx-group-h">Platform services</h2>
+            <p class="muted small cx-group-p">These run the whole site. Email is set here. Payments, the AI engine and Claude stay server settings on purpose, because a mistake there costs money; you can still see whether each one works and test it here.</p>
+            <div class="ow-stack" id="cx-platform"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+<!--@include footer-->
+<script type="module" src="/src/owner-connections.ts"></script>
+</body>
+</html>

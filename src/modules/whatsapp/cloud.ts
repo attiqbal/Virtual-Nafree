@@ -63,6 +63,24 @@ export class WhatsAppCloud {
     return out;
   }
 
+  /** A harmless read of the business number, for the Connections page's test button. */
+  async phoneInfo(): Promise<{ number?: string; name?: string; quality?: string; nameStatus?: string }> {
+    let res: Response;
+    try {
+      res = await this.http(`https://graph.facebook.com/${this.cfg.version ?? "v23.0"}/${this.cfg.phoneNumberId}?fields=display_phone_number,verified_name,quality_rating,name_status`, {
+        headers: { authorization: `Bearer ${this.cfg.accessToken}` },
+        signal: AbortSignal.timeout(15_000),
+      });
+    } catch {
+      throw new WhatsAppError("WhatsApp could not be reached");
+    }
+    let j: any;
+    try { j = await res.json(); } catch { j = undefined; }
+    if (!res.ok || j?.error) throw new WhatsAppError(`Meta said no: ${String(j?.error?.message ?? `error ${res.status}`).replace(this.cfg.accessToken, "[token]").slice(0, 200)}`);
+    const str = (v: unknown) => (typeof v === "string" ? v.slice(0, 80) : undefined);
+    return { number: str(j?.display_phone_number), name: str(j?.verified_name), quality: str(j?.quality_rating), nameStatus: str(j?.name_status) };
+  }
+
   private async send(body: Record<string, unknown>): Promise<void> {
     let res: Response;
     try {

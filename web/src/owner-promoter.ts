@@ -5,6 +5,8 @@ import "./styles.css";
 import { api } from "./api";
 import { initNav, toast } from "./common";
 import { esc, gbp, initOwnerNav, markDemo, ownerLoad } from "./owner-common";
+import { renderNeeds } from "./owner-needs";
+import { OWNER_SPECIALISTS } from "../../src/modules/promoter/owner-team";
 import type { Campaign, DraftItem, SiteProfile } from "../../src/modules/promoter/index";
 
 initNav();
@@ -65,7 +67,7 @@ function draftCard(d: Draft): string {
              <label class="small">Schedule (Facebook only, optional) <input class="input" type="datetime-local" data-when="${esc(d.id)}"></label>
              <button type="button" class="btn btn-primary btn-sm" data-act="publish" data-id="${esc(d.id)}">Publish for me</button>
              <button type="button" class="btn btn-quiet btn-sm" data-act="posted" data-id="${esc(d.id)}">I published it myself</button>`
-          : `<input class="input" data-url="${esc(d.id)}" placeholder="Link to the published post (optional)" aria-label="Link to the published post for ${esc(d.title)}" style="min-width:220px"><button type="button" class="btn btn-primary btn-sm" data-act="posted" data-id="${esc(d.id)}">I published it</button>`)
+          : `${d.channel === "social" || d.channel === "community" ? `<a class="btn btn-primary btn-sm" href="/owner-connections.html#c-facebook">Connect Facebook or Instagram so I can publish this</a>` : ""}<input class="input" data-url="${esc(d.id)}" placeholder="Link to the published post (optional)" aria-label="Link to the published post for ${esc(d.title)}" style="min-width:220px"><button type="button" class="btn ${d.channel === "social" || d.channel === "community" ? "btn-ghost" : "btn-primary"} btn-sm" data-act="posted" data-id="${esc(d.id)}">I published it myself</button>`)
       : "";
   return `<article class="panel" id="${esc(d.id)}" aria-labelledby="${esc(d.id)}-t">
     <h3 id="${esc(d.id)}-t" class="small">${esc(SITE_NAME[d.site] ?? d.site)} · ${esc(d.channel)} · ${esc(d.title)}</h3>
@@ -225,5 +227,7 @@ void (async () => {
   if (loaded === "demo") { data = DEMO; markDemo(); } else { data = loaded; live = true; }
   if (live) { const c = await api<{ facebook: boolean; instagram: boolean }>("/owner/promoter/channels"); if (c.ok && c.data) channels = c.data; }
   render();
+  const me = OWNER_SPECIALISTS.find((s) => s.key === "promotion-agent")!;
+  void renderNeeds($("needs"), "promotion-agent", { name: "Promotion agent", avatar: me.avatar, initials: "PA", asks: me.asks });
   if (location.hash.length > 1) document.getElementById(location.hash.slice(1))?.scrollIntoView();
 })();

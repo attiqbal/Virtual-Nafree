@@ -4,6 +4,8 @@ import "./styles.css";
 import { api } from "./api";
 import { initNav, toast } from "./common";
 import { esc, initOwnerNav, markDemo, ownerLoad } from "./owner-common";
+import { renderNeeds } from "./owner-needs";
+import { OWNER_SPECIALISTS } from "../../src/modules/promoter/owner-team";
 import type { Account, Approval, GrowthItem, Opportunity, Publication } from "../../src/modules/growth/index";
 
 initNav();
@@ -183,5 +185,7 @@ void (async () => {
   if (loaded === undefined) return;
   if (loaded === "demo") { data = DEMO; markDemo(); } else { data = loaded; live = true; }
   render();
+  const me = OWNER_SPECIALISTS.find((s) => s.key === "community-growth-manager")!;
+  void renderNeeds($("needs"), "community-growth-manager", { name: "Community growth manager", avatar: me.avatar, initials: "CG", asks: me.asks });
   if (location.hash.length > 1) document.getElementById(location.hash.slice(1))?.scrollIntoView();
 })();

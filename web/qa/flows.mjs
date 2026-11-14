@@ -9,7 +9,7 @@ const mk = async (opts = {}) => { const ctx = await b.newContext({ viewport: { w
 // 1. Link check: every internal link and anchor on every page
 {
   const p = await mk(); const seen = new Map();
-  const pages = ["/", "/employees.html", "/pricing.html", "/security.html", "/signin.html", "/onboarding.html", "/app.html", "/review.html", "/owner-decisions.html", "/owner-specialists.html", "/owner-clients.html", "/owner-prices.html", "/owner-promotions.html", "/owner-promoter.html", "/owner-growth.html", "/owner-team.html", "/affiliate.html", "/owner-ai.html", "/404.html"];
+  const pages = ["/", "/employees.html", "/pricing.html", "/security.html", "/signin.html", "/onboarding.html", "/app.html", "/review.html", "/owner-decisions.html", "/owner-specialists.html", "/owner-clients.html", "/owner-prices.html", "/owner-promotions.html", "/owner-promoter.html", "/owner-growth.html", "/owner-team.html", "/owner-connections.html", "/affiliate.html", "/owner-ai.html", "/404.html"];
   let broken = [];
   for (const pg of pages) {
     await p.goto(B + pg, { waitUntil: "networkidle" });
@@ -208,6 +208,19 @@ const mk = async (opts = {}) => { const ctx = await b.newContext({ viewport: { w
   const store = await (await p.request.get(B + "/api/store")).json();
   ok("owner prices: saved change shows in the store at once", store.prices?.addOnEmployeeMonthlyGbp === 13, JSON.stringify(store.prices));
   ok("owner prices: history records the change", (await p.textContent("#pr-history") ?? "").includes("QA price check"));
+  // Connections: the owner pastes Facebook details in the browser; the token is saved but never shown again.
+  await p.goto(B + "/owner-connections.html#c-facebook"); await p.locator("#f-facebook-accessToken").waitFor({ timeout: 5000 }).catch(() => {});
+  const FAKE = "EAAqaflowtoken1234567890abcdef";
+  await p.fill("#f-facebook-accessToken", FAKE); await p.fill("#f-facebook-pageId", "105839201234567");
+  await p.click("#c-facebook button[type=submit]"); await p.waitForTimeout(500);
+  ok("owner connections: Facebook saved from the page", /Saved/.test(await p.textContent("#m-facebook") ?? "") && (await p.textContent("#c-facebook .cx-badge") ?? "").includes("Connected"));
+  ok("owner connections: the saved token never comes back to the browser", !(await p.content()).includes(FAKE));
+  const tok = await p.evaluate(() => localStorage.getItem("maiz.token"));
+  const ch = await (await p.request.get(B + "/api/owner/promoter/channels", { headers: { authorization: `Bearer ${tok}` } })).json();
+  ok("owner connections: the promotion agent can publish at once, no restart", ch.facebook === true, JSON.stringify(ch));
+  await p.goto(B + "/owner-promoter.html"); await p.locator("#needs li").first().waitFor({ timeout: 5000 }).catch(() => {});
+  ok("owner connections: the agent's page says what it still needs", (await p.textContent("#needs") ?? "").includes("Instagram"));
+  ok("owner connections: a client cannot see connections", (await p.request.get(B + "/api/owner/connections", { headers: { authorization: `Bearer ${client.token}` } })).status() === 403);
   await p.context().close();
   const c = await mk();
   await c.goto(B + "/signin.html"); await c.evaluate((t) => localStorage.setItem("maiz.token", t), client.token);

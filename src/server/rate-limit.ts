@@ -30,6 +30,8 @@ export class RateLimiter {
 export function limitFor(method: string, path: string): Limit | undefined {
   // A referral visit sets a cookie and counts a click: a handful per address a minute is plenty.
   if (method === "GET" && path.startsWith("/r/")) return { max: 20, windowMs: 60_000 };
+  // Saving connection details: plenty for typing and fixing, not for hammering.
+  if (method === "PUT" && path.startsWith("/api/owner/connections/")) return { max: 30, windowMs: 10 * 60_000 };
   if (method !== "POST") return undefined;
   // Coupon codes can be guessed, so tries are few per address. Wrong tries are also counted per person.
   if (path === "/api/coupons/check" || path === "/api/coupons/redeem") return { max: 12, windowMs: 10 * 60_000 };
@@ -43,6 +45,8 @@ export function limitFor(method: string, path: string): Limit | undefined {
   if (path === "/api/checkout") return { max: 20, windowMs: 10 * 60_000 };
   if (path.startsWith("/api/auth/")) return { max: 15, windowMs: 10 * 60_000 };
   if (path === "/api/signin/start" || path === "/api/signup") return { max: 10, windowMs: 10 * 60_000 };
+  // Connection tests call Meta, Stripe, Resend and RunPod: enough to fix and retry, not enough to hammer them.
+  if (path.startsWith("/api/owner/connections/") && /\/(test|send-test)$/.test(path)) return { max: 30, windowMs: 10 * 60_000 };
   // Run-now wakes the GPU pod, which is billed per second: keep it to a few presses an hour per address.
   if (path === "/api/queue/run-now" || path === "/api/owner/batch/run-now") return { max: 6, windowMs: 60 * 60_000 };
   return { max: 60, windowMs: 60_000 };

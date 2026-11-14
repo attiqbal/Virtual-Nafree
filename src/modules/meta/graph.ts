@@ -87,13 +87,29 @@ export class MetaGraph {
     return json;
   }
 
+  /** A harmless read of one object (a Page or an Instagram account) for the Connections page's test button. */
+  async lookup(id: string, fields: string): Promise<Record<string, unknown>> {
+    if (!/^\d{5,25}$/.test(id)) throw new MetaRejected("that id is not a number");
+    return (await this.call("GET", `/${id}`, { fields })) ?? {};
+  }
+
+  /** The token's own permissions, when Meta will say. Undefined when it will not (not every token can read this). */
+  async scopes(): Promise<string[] | undefined> {
+    try {
+      const r = await this.call("GET", "/me/permissions");
+      return Array.isArray(r?.data) ? r.data.filter((p: any) => p?.status === "granted").map((p: any) => String(p.permission)) : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
   async publish(i: PublishInput): Promise<Published> {
     return i.target === "facebook" ? this.publishFacebook(i) : this.publishInstagram(i);
   }
 
   private async publishFacebook(i: PublishInput): Promise<Published> {
     const pageId = this.cfg.pageId;
-    if (!pageId) throw new MetaRejected("Facebook is not connected (META_FACEBOOK_PAGE_ID is not set)");
+    if (!pageId) throw new MetaRejected("Facebook is not connected yet: add your Page on the Connections page");
     const scheduled: Record<string, string> = i.scheduleAt ? { published: "false", scheduled_publish_time: String(Math.floor(i.scheduleAt.getTime() / 1000)) } : {};
     const r = i.imageUrl
       ? await this.call("POST", `/${pageId}/photos`, { url: i.imageUrl, caption: i.message, ...scheduled })
@@ -105,7 +121,7 @@ export class MetaGraph {
 
   private async publishInstagram(i: PublishInput): Promise<Published> {
     const igId = this.cfg.instagramId;
-    if (!igId) throw new MetaRejected("Instagram is not connected (META_INSTAGRAM_ACCOUNT_ID is not set)");
+    if (!igId) throw new MetaRejected("Instagram is not connected yet: add your account on the Connections page");
     // Two steps: make the media container, then publish it. A failure at step one publishes nothing.
     const container = await this.call("POST", `/${igId}/media`, { image_url: i.imageUrl!, caption: i.message });
     const published = await this.call("POST", `/${igId}/media_publish`, { creation_id: String(container?.id) });

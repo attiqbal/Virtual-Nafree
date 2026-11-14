@@ -66,6 +66,8 @@ export interface Sink {
   credential(userId: string, rec: { hash: string; changedAt: string }): void;
   /** Platform-level: a coupon, redemption, affiliate, referral, commission or payout, replaced on every change. */
   promo(kind: PromoKind, id: string, data: unknown): void;
+  /** Platform-level: the owner's details for one connection (Facebook, Instagram, WhatsApp) as JSON. The store must encrypt it. Empty string means removed. */
+  connectionSecret(key: string, secret: string): void;
 }
 
 export const PROMO_KINDS = ["coupon", "redemption", "affiliate", "referral", "accrual", "payout", "campaign", "draft", "lead", "optout", "fact", "opportunity", "post", "publication", "account", "approval", "channel"] as const;
@@ -109,4 +111,5 @@ export interface Snapshot {
   records?: GenericRecord[];
   credentials?: { userId: string; hash: string; changedAt: string }[];
   promoRecords?: { kind: PromoKind; id: string; data: any }[];
+  connectionSecrets?: { key: string; secret: string }[];
 }

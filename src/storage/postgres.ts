@@ -408,6 +408,17 @@ export class PgStore implements Sink {
       );
     }, { key: `promo_${kind}\u0000${id}` });
   }
+  /** The owner's connection details (tokens, ids): platform role only, encrypted like app credentials. */
+  connectionSecret(key: string, secret: string): void {
+    const json = JSON.stringify({ enc: secret ? this.encrypt(secret) : "" });
+    this.queue(async () => {
+      await this.admin.query(
+        `INSERT INTO platform_records(kind, id, data) VALUES ('connection_secret', $1, $2)
+         ON CONFLICT (kind, id) DO UPDATE SET data = EXCLUDED.data, updated_at = clock_timestamp()`,
+        [key, json],
+      );
+    }, { key: `connection_secret\u0000${key}` });
+  }
   batchJob(j: BatchJob): void {
     this.state(j.workspaceId, "batch_job", j.id, j);
   }
@@ -492,6 +503,7 @@ export class PgStore implements Sink {
       batchRuns: (await q("SELECT data FROM platform_records WHERE kind = 'batch_run' ORDER BY updated_at, id")).map((r) => r.data),
       credentials: (await q("SELECT id, data FROM platform_records WHERE kind = 'credential'")).map((r) => ({ userId: r.id, ...r.data })),
       promoRecords: (await q("SELECT kind, id, data FROM platform_records WHERE kind LIKE 'promo\\_%' ORDER BY updated_at, id")).map((r) => ({ kind: String(r.kind).slice(6) as PromoKind, id: r.id, data: r.data })),
+      connectionSecrets: (await q("SELECT id, data FROM platform_records WHERE kind = 'connection_secret' ORDER BY id")).filter((r) => r.data?.enc).map((r) => ({ key: r.id, secret: this.decrypt(r.data.enc) })),
       aiDays: (await q("SELECT data FROM platform_records WHERE kind = 'ai_day' ORDER BY id")).map((r) => r.data),
     } as Snapshot;
   }
